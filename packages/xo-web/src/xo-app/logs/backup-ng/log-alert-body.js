@@ -6,11 +6,12 @@ import React from 'react'
 import Select from 'form/select'
 import Tooltip from 'tooltip'
 import { addSubscriptions, formatSize, formatSpeed } from 'utils'
-import { countBy, filter, get, keyBy, map } from 'lodash'
+import { countBy, cloneDeep, filter, keyBy, map } from 'lodash'
 import { FormattedDate } from 'react-intl'
+import { get } from '@xen-orchestra/defined'
 import { injectState, provideState } from 'reaclette'
 import { runBackupNgJob, subscribeBackupNgLogs, subscribeRemotes } from 'xo'
-import { Vm, Sr, Remote } from 'render-xo-item'
+import { Vm, Sr, Remote, Pool } from 'render-xo-item'
 
 const TASK_STATUS = {
   failure: {
@@ -44,18 +45,46 @@ const TaskStateInfos = ({ status }) => {
   )
 }
 
-const TaskDate = ({ label, value }) =>
-  _.keyValue(
-    _(label),
-    <FormattedDate
-      value={new Date(value)}
-      month='short'
-      day='numeric'
-      year='numeric'
-      hour='2-digit'
-      minute='2-digit'
-      second='2-digit'
-    />
+const TaskDate = ({ label, value }) => (
+  <div>
+    {_.keyValue(
+      _(label),
+      <FormattedDate
+        value={new Date(value)}
+        month='short'
+        day='numeric'
+        year='numeric'
+        hour='2-digit'
+        minute='2-digit'
+        second='2-digit'
+      />
+    )}
+  </div>
+)
+
+const hasTaskFailed = ({ status }) =>
+  status !== 'success' && status !== 'pending'
+
+const TaskError = ({ task }) =>
+  hasTaskFailed(task) &&
+  get(() => task.result.message) !== undefined && (
+    <div>
+      {_.keyValue(
+        _('taskError'),
+        <span className='text-danger'>{task.result.message}</span>
+      )}
+    </div>
+  )
+
+const TaskEndAndDuration = ({ task }) =>
+  task.end !== undefined && (
+    <div>
+      <TaskDate label='taskEnd' value={task.end} />
+      {_.keyValue(
+        _('taskDuration'),
+        <FormattedDuration duration={task.end - task.start} />
+      )}
+    </div>
   )
 
 const Warnings = ({ warnings }) =>
@@ -75,6 +104,234 @@ const Warnings = ({ warnings }) =>
 const UNHEALTHY_VDI_CHAIN_ERROR = 'unhealthy VDI chain'
 const UNHEALTHY_VDI_CHAIN_LINK =
   'https://xen-orchestra.com/docs/backup_troubleshooting.html#vdi-chain-protection'
+
+const VmTask = ({ children, restartVmJob, scheduleId, task }) => {
+  const id = task.data.id
+  const hasFailed = hasTaskFailed(task)
+
+  let error = null
+  let message
+  if (hasFailed && (message = get(() => task.result.message)) !== undefined) {
+    if (message === UNHEALTHY_VDI_CHAIN_ERROR) {
+      error = (
+        <Tooltip content={_('clickForMoreInformation')}>
+          <a
+            className='text-info'
+            href={UNHEALTHY_VDI_CHAIN_LINK}
+            rel='noopener noreferrer'
+            target='_blank'
+          >
+            <Icon icon='info' /> {_('unhealthyVdiChainError')}
+          </a>
+        </Tooltip>
+      )
+    } else {
+      const [label, className] =
+        task.status === 'skipped'
+          ? [_('taskReason'), 'text-info']
+          : [_('taskError', 'text-danger')]
+      error = _.keyValue(label, <span className={className}>{message}</span>)
+    }
+  }
+  return (
+    <div>
+      <Vm id={id} link newTab /> ({id.slice(4, 8)}){' '}
+      <TaskStateInfos status={task.status} />{' '}
+      {scheduleId !== undefined && hasFailed && (
+        <ActionButton
+          handler={restartVmJob}
+          icon='run'
+          size='small'
+          tooltip={_('backupRestartVm')}
+          data-vm={id}
+        />
+      )}
+      <Warnings warnings={task.warnings} />
+      {children}
+      <TaskDate label='taskStart' value={task.start} />
+      <TaskEndAndDuration task={task} />
+      {error}
+      {task.transfer !== undefined && (
+        <div>
+          {_.keyValue(
+            _('taskTransferredDataSize'),
+            formatSize(task.transfer.size)
+          )}
+          <br />
+          {_.keyValue(
+            _('taskTransferredDataSpeed'),
+            formatSpeed(task.transfer.size, task.transfer.duration)
+          )}
+        </div>
+      )}
+      {task.merge !== undefined && (
+        <div>
+          {_.keyValue(_('taskMergedDataSize'), formatSize(task.merge.size))}
+          <br />
+          {_.keyValue(
+            _('taskMergedDataSpeed'),
+            formatSpeed(task.merge.size, task.merge.duration)
+          )}
+        </div>
+      )}
+      {task.isFull !== undefined &&
+        _.keyValue(_('exportType'), task.isFull ? 'full' : 'delta')}
+    </div>
+  )
+}
+
+const PoolTask = ({ task }) => {
+  const id = task.data.id
+  return (
+    <div>
+      <Pool id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <TaskStateInfos status={task.status} />
+      <Warnings warnings={task.warnings} />
+      <TaskDate label='taskStart' value={task.start} />
+      <TaskEndAndDuration task={task} />
+      <TaskError task={task} />
+    </div>
+  )
+}
+
+const XoTask = ({ task }) => (
+  <div>
+    <Icon icon='menu-xoa' /> XO <TaskStateInfos status={task.status} />
+    <Warnings warnings={task.warnings} />
+    <TaskDate label='taskStart' value={task.start} />
+    <TaskEndAndDuration task={task} />
+    <TaskError task={task} />
+  </div>
+)
+
+const SnapshotTask = ({ task }) => (
+  <div>
+    <Icon icon='task' /> {_('snapshotVmLabel')}{' '}
+    <TaskStateInfos status={task.status} />
+    <Warnings warnings={task.warnings} />
+    <TaskDate label='taskStart' value={task.start} />
+    {task.end !== undefined && <TaskDate label='taskEnd' value={task.end} />}
+    <TaskError task={task} />
+  </div>
+)
+
+const RemoteTask = ({ children, task }) => {
+  const id = task.data.id
+  return (
+    <div>
+      <Remote id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <TaskStateInfos status={task.status} />
+      <Warnings warnings={task.warnings} />
+      {children}
+      <TaskDate label='taskStart' value={task.start} />
+      <TaskEndAndDuration task={task} />
+      <TaskError task={task} />
+    </div>
+  )
+}
+
+const SrTask = ({ children, task }) => {
+  const id = task.data.id
+  return (
+    <div>
+      <Sr id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <TaskStateInfos status={task.status} />
+      <Warnings warnings={task.warnings} />
+      {children}
+      <TaskDate label='taskStart' value={task.start} />
+      <TaskEndAndDuration task={task} />
+      <TaskError task={task} />
+    </div>
+  )
+}
+
+const TransferOrMergeTask = ({ task }) => {
+  const size = get(() => task.result.size)
+  return (
+    <div>
+      <Icon icon='task' /> {task.message}{' '}
+      <TaskStateInfos status={task.status} />
+      <Warnings warnings={task.warnings} />
+      <br />
+      <TaskDate label='taskStart' value={task.start} />
+      <TaskEndAndDuration task={task} />
+      <TaskError task={task} />
+      {size > 0 && (
+        <div>
+          {_.keyValue(_('operationSize'), formatSize(size))}
+          <br />
+          {_.keyValue(
+            _('operationSpeed'),
+            formatSpeed(size, task.end - task.start)
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TaskLi = ({ className, task, ...props }) => {
+  const type = get(() => task.data.type)
+  if (type !== undefined) {
+    if (type === 'VM') {
+      return (
+        <li className={className}>
+          <VmTask task={task} {...props} />
+        </li>
+      )
+    }
+
+    if (type === 'remote') {
+      return (
+        <li className={className}>
+          <RemoteTask task={task} {...props} />
+        </li>
+      )
+    }
+
+    if (type === 'SR') {
+      return (
+        <li className={className}>
+          <SrTask task={task} {...props} />
+        </li>
+      )
+    }
+
+    if (type === 'pool') {
+      return (
+        <li className={className}>
+          <PoolTask task={task} {...props} />
+        </li>
+      )
+    }
+
+    if (type === 'xo') {
+      return (
+        <li className={className}>
+          <XoTask task={task} {...props} />
+        </li>
+      )
+    }
+  }
+
+  if (task.message === 'snapshot') {
+    return (
+      <li className={className}>
+        <SnapshotTask task={task} {...props} />
+      </li>
+    )
+  }
+
+  if (task.message === 'merge' || task.message === 'transfer') {
+    return (
+      <li className={className}>
+        <TransferOrMergeTask task={task} {...props} />
+      </li>
+    )
+  }
+
+  return null
+}
 
 export default decorate([
   addSubscriptions(({ id }) => ({
@@ -107,10 +364,36 @@ export default decorate([
       },
     },
     computed: {
-      filteredTaskLogs: (
-        { defaultFilter, filter: value = defaultFilter },
-        { log = {} }
-      ) =>
+      log: (_, { log }) => {
+        if (log === undefined) {
+          return {}
+        }
+
+        if (log.tasks === undefined) {
+          return log
+        }
+
+        const newLog = cloneDeep(log)
+        newLog.tasks.forEach(task => {
+          if (task.tasks === undefined || get(() => task.data.type) !== 'VM') {
+            return
+          }
+          task.tasks.forEach(subTask => {
+            const isFull = get(() => subTask.data.isFull)
+            if (isFull !== undefined) {
+              task.isFull = isFull
+              return false
+            }
+          })
+        })
+
+        return newLog
+      },
+      filteredTaskLogs: ({
+        defaultFilter,
+        filter: value = defaultFilter,
+        log,
+      }) =>
         value === 'all'
           ? log.tasks
           : filter(log.tasks, ({ status }) => status === value),
@@ -119,7 +402,7 @@ export default decorate([
           {_(label)} ({countByStatus[value] || 0})
         </span>
       ),
-      countByStatus: (_, { log = {} }) => ({
+      countByStatus: ({ log }) => ({
         all: get(log.tasks, 'length'),
         ...countBy(log.tasks, 'status'),
       }),
@@ -169,8 +452,8 @@ export default decorate([
     },
   }),
   injectState,
-  ({ log = {}, remotes, state, effects }) => {
-    const { status, result, scheduleId } = log
+  ({ remotes, state, effects }) => {
+    const { status, result, scheduleId } = state.log
     return (status === 'failure' || status === 'skipped') &&
       result !== undefined ? (
       <span className={status === 'skipped' ? 'text-info' : 'text-danger'}>
@@ -188,238 +471,30 @@ export default decorate([
           value={state.filter || state.defaultFilter}
           valueKey='value'
         />
-        <Warnings warnings={log.warnings} />
+        <Warnings warnings={state.log.warnings} />
         <br />
         <ul className='list-group'>
           {map(state.filteredTaskLogs, taskLog => {
-            let globalIsFull
             return (
-              <li key={taskLog.data.id} className='list-group-item'>
-                <Vm id={taskLog.data.id} link newTab /> (
-                {taskLog.data.id.slice(4, 8)}){' '}
-                <TaskStateInfos status={taskLog.status} />{' '}
-                {scheduleId !== undefined &&
-                  taskLog.status !== 'success' &&
-                  taskLog.status !== 'pending' && (
-                    <ActionButton
-                      handler={effects.restartVmJob}
-                      icon='run'
-                      size='small'
-                      tooltip={_('backupRestartVm')}
-                      data-vm={taskLog.data.id}
-                    />
-                  )}
-                <Warnings warnings={taskLog.warnings} />
+              <TaskLi
+                className='list-group-item'
+                key={taskLog.id}
+                restartVmJob={effects.restartVmJob}
+                scheduleId={scheduleId}
+                task={taskLog}
+              >
                 <ul>
-                  {map(taskLog.tasks, subTaskLog => {
-                    if (
-                      subTaskLog.message !== 'export' &&
-                      subTaskLog.message !== 'snapshot'
-                    ) {
-                      return
-                    }
-
-                    const isFull = get(subTaskLog.data, 'isFull')
-                    if (isFull !== undefined && globalIsFull === undefined) {
-                      globalIsFull = isFull
-                    }
-                    return (
-                      <li key={subTaskLog.id}>
-                        {subTaskLog.message === 'snapshot' ? (
-                          <span>
-                            <Icon icon='task' /> {_('snapshotVmLabel')}
-                          </span>
-                        ) : subTaskLog.data.type === 'remote' ? (
-                          <span>
-                            <Remote id={subTaskLog.data.id} link newTab /> (
-                            {subTaskLog.data.id.slice(4, 8)})
-                          </span>
-                        ) : (
-                          <span>
-                            <Sr id={subTaskLog.data.id} link newTab /> (
-                            {subTaskLog.data.id.slice(4, 8)})
-                          </span>
-                        )}{' '}
-                        <TaskStateInfos status={subTaskLog.status} />
-                        <Warnings warnings={subTaskLog.warnings} />
-                        <ul>
-                          {map(subTaskLog.tasks, operationLog => {
-                            if (
-                              operationLog.message !== 'merge' &&
-                              operationLog.message !== 'transfer'
-                            ) {
-                              return
-                            }
-
-                            return (
-                              <li key={operationLog.id}>
-                                <span>
-                                  <Icon icon='task' /> {operationLog.message}
-                                </span>{' '}
-                                <TaskStateInfos status={operationLog.status} />
-                                <Warnings warnings={operationLog.warnings} />
-                                <br />
-                                <TaskDate
-                                  label='taskStart'
-                                  value={operationLog.start}
-                                />
-                                {operationLog.end !== undefined && (
-                                  <div>
-                                    <TaskDate
-                                      label='taskEnd'
-                                      value={operationLog.end}
-                                    />
-                                    <br />
-                                    {_.keyValue(
-                                      _('taskDuration'),
-                                      <FormattedDuration
-                                        duration={
-                                          operationLog.end - operationLog.start
-                                        }
-                                      />
-                                    )}
-                                    <br />
-                                    {operationLog.status === 'failure'
-                                      ? _.keyValue(
-                                          _('taskError'),
-                                          <span className='text-danger'>
-                                            {operationLog.result.message}
-                                          </span>
-                                        )
-                                      : operationLog.result.size > 0 && (
-                                          <div>
-                                            {_.keyValue(
-                                              _('operationSize'),
-                                              formatSize(
-                                                operationLog.result.size
-                                              )
-                                            )}
-                                            <br />
-                                            {_.keyValue(
-                                              _('operationSpeed'),
-                                              formatSpeed(
-                                                operationLog.result.size,
-                                                operationLog.end -
-                                                  operationLog.start
-                                              )
-                                            )}
-                                          </div>
-                                        )}
-                                  </div>
-                                )}
-                              </li>
-                            )
-                          })}
-                        </ul>
-                        <TaskDate label='taskStart' value={subTaskLog.start} />
-                        {subTaskLog.end !== undefined && (
-                          <div>
-                            <TaskDate label='taskEnd' value={subTaskLog.end} />
-                            <br />
-                            {subTaskLog.message !== 'snapshot' &&
-                              _.keyValue(
-                                _('taskDuration'),
-                                <FormattedDuration
-                                  duration={subTaskLog.end - subTaskLog.start}
-                                />
-                              )}
-                            <br />
-                            {subTaskLog.status === 'failure' &&
-                              subTaskLog.result !== undefined &&
-                              _.keyValue(
-                                _('taskError'),
-                                <span className='text-danger'>
-                                  {subTaskLog.result.message}
-                                </span>
-                              )}
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
+                  {map(taskLog.tasks, subTaskLog => (
+                    <TaskLi key={subTaskLog.id} task={subTaskLog}>
+                      <ul>
+                        {map(subTaskLog.tasks, subSubTaskLog => (
+                          <TaskLi task={subSubTaskLog} key={subSubTaskLog.id} />
+                        ))}
+                      </ul>
+                    </TaskLi>
+                  ))}
                 </ul>
-                <TaskDate label='taskStart' value={taskLog.start} />
-                <br />
-                {taskLog.end !== undefined && (
-                  <div>
-                    <TaskDate label='taskEnd' value={taskLog.end} />
-                    <br />
-                    {_.keyValue(
-                      _('taskDuration'),
-                      <FormattedDuration
-                        duration={taskLog.end - taskLog.start}
-                      />
-                    )}
-                    <br />
-                    {taskLog.result !== undefined ? (
-                      taskLog.result.message === UNHEALTHY_VDI_CHAIN_ERROR ? (
-                        <Tooltip content={_('clickForMoreInformation')}>
-                          <a
-                            className='text-info'
-                            href={UNHEALTHY_VDI_CHAIN_LINK}
-                            rel='noopener noreferrer'
-                            target='_blank'
-                          >
-                            <Icon icon='info' /> {_('unhealthyVdiChainError')}
-                          </a>
-                        </Tooltip>
-                      ) : (
-                        _.keyValue(
-                          taskLog.status === 'skipped'
-                            ? _('taskReason')
-                            : _('taskError'),
-                          <span
-                            className={
-                              taskLog.status === 'skipped'
-                                ? 'text-info'
-                                : 'text-danger'
-                            }
-                          >
-                            {taskLog.result.message}
-                          </span>
-                        )
-                      )
-                    ) : (
-                      <div>
-                        {taskLog.transfer !== undefined && (
-                          <div>
-                            {_.keyValue(
-                              _('taskTransferredDataSize'),
-                              formatSize(taskLog.transfer.size)
-                            )}
-                            <br />
-                            {_.keyValue(
-                              _('taskTransferredDataSpeed'),
-                              formatSpeed(
-                                taskLog.transfer.size,
-                                taskLog.transfer.duration
-                              )
-                            )}
-                          </div>
-                        )}
-                        {taskLog.merge !== undefined && (
-                          <div>
-                            {_.keyValue(
-                              _('taskMergedDataSize'),
-                              formatSize(taskLog.merge.size)
-                            )}
-                            <br />
-                            {_.keyValue(
-                              _('taskMergedDataSpeed'),
-                              formatSpeed(
-                                taskLog.merge.size,
-                                taskLog.merge.duration
-                              )
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {globalIsFull !== undefined &&
-                  _.keyValue(_('exportType'), globalIsFull ? 'full' : 'delta')}
-              </li>
+              </TaskLi>
             )
           })}
         </ul>
