@@ -403,7 +403,7 @@ export default decorate([
         </span>
       ),
       countByStatus: ({ log }) => ({
-        all: get(log.tasks, 'length'),
+        all: get(() => log.tasks.length),
         ...countBy(log.tasks, 'status'),
       }),
       options: ({ countByStatus }) => [
