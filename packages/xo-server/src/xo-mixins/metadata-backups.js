@@ -44,7 +44,15 @@ type MetadataBackupJob = {
 //          └─ <YYYYMMDD>T<HHmmss>
 //             ├─ metadata.json
 //             └─ data
-
+//
+// Task logs emitted in a metadata backup execution:
+//
+// job.start
+// ├─ task.start(data: { type: 'pool', id: string })
+// │  └─ task.end
+// ├─ task.start(data: { type: 'xo' })
+// │  └─ task.end
+// └─ job.end
 export default class metadataBackup {
   _app: {
     createJob: (

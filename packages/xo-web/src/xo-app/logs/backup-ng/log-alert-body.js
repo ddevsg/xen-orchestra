@@ -184,7 +184,7 @@ const PoolTask = ({ task }) => {
   const id = task.data.id
   return (
     <div>
-      <Pool id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <Pool id={id} link newTab /> ({id.slice(4, 8)}){' '}
       <TaskStateInfos status={task.status} />
       <Warnings warnings={task.warnings} />
       <TaskDate label='taskStart' value={task.start} />
@@ -219,7 +219,7 @@ const RemoteTask = ({ children, task }) => {
   const id = task.data.id
   return (
     <div>
-      <Remote id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <Remote id={id} link newTab /> ({id.slice(4, 8)}){' '}
       <TaskStateInfos status={task.status} />
       <Warnings warnings={task.warnings} />
       {children}
@@ -234,7 +234,7 @@ const SrTask = ({ children, task }) => {
   const id = task.data.id
   return (
     <div>
-      <Sr id={id} link newTab /> {id.slice(4, 8)}{' '}
+      <Sr id={id} link newTab /> ({id.slice(4, 8)}){' '}
       <TaskStateInfos status={task.status} />
       <Warnings warnings={task.warnings} />
       {children}
