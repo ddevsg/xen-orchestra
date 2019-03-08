@@ -197,5 +197,8 @@
     "snapshotSerializers": [
       "enzyme-to-json/serializer"
     ]
+  },
+  "dependencies": {
+    "copy-to-clipboard": "^3.0.8"
   }
 }

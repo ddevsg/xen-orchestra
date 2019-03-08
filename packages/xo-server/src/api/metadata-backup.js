@@ -101,3 +101,44 @@ runJob.params = {
     type: 'string',
   },
 }
+
+export async function listMetadataBackups({ remotes }) {
+  return {
+    xo: await this.listXoMetadataBackups(remotes),
+    pool: await this.listPoolMetadataBackups(remotes),
+  }
+}
+
+listMetadataBackups.permission = 'admin'
+
+listMetadataBackups.params = {
+  remotes: {
+    type: 'array',
+    items: {
+      type: 'string',
+    },
+  },
+}
+
+export function restoreMetadataBackup({ id }) {
+  return this.restoreMetadataBackup(id)
+}
+
+restoreMetadataBackup.permission = 'admin'
+
+restoreMetadataBackup.params = {
+  id: {
+    type: 'string',
+  },
+}
+
+export function deleteMetadataBackup({ id }) {
+  return this.deleteMetadataBackup(id)
+}
+deleteMetadataBackup.permission = 'admin'
+
+deleteMetadataBackup.params = {
+  id: {
+    type: 'string',
+  },
+}

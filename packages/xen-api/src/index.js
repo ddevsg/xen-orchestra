@@ -660,8 +660,8 @@ export class Xapi extends EventEmitter {
 
         // Xen API does not support chunk encoding.
         const isStream = typeof body.pipe === 'function'
-        const { length } = body
-        if (isStream && length === undefined) {
+        const hasLength = body.length !== undefined
+        if (isStream && !hasLength) {
           // add a fake huge content length (1 PiB)
           headers['content-length'] = '1125899906842624'
         }
@@ -730,6 +730,13 @@ export class Xapi extends EventEmitter {
               throw error
             })
           }
+
+          if (hasLength) {
+            return response.readAll().then(() => taskResult)
+          }
+
+          // in case the length has not been provided, we need to abruptly cut
+          // the connection when all the data has been uploaded
 
           if (req.finished) {
             response.cancel()
