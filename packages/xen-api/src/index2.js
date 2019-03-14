@@ -124,7 +124,7 @@ export class Xapi {
     return promise
   }
 
-  @dedupe
+  connect = dedupe(this.connect)
   async connect() {
     const status = this._status
     if (status === CONNECTED) {
@@ -271,7 +271,7 @@ export class Xapi {
     })
   }
 
-  @dedupe
+  _sessionOpen = dedupe(this._sessionOpen)
   async _sessionOpen() {
     const { user, password } = this._auth
     const params = [user, password]
@@ -291,7 +291,7 @@ export class Xapi {
   }
 
   // TODO: cancelation
-  @dedupe
+  _watchEvents = dedupe(this._watchEvents)
   async _watchEvents() {
     await this._connected
 
