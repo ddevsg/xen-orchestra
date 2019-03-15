@@ -35,6 +35,7 @@
   "dependencies": {
     "blocked": "^1.2.1",
     "debug": "^4.0.1",
+    "depd": "^2.0.0",
     "event-to-promise": "^0.8.0",
     "exec-promise": "^0.7.0",
     "http-request-plus": "^0.8.0",

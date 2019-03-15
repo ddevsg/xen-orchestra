@@ -2,11 +2,11 @@
 
 import pDefer from 'promise-toolbox/defer'
 
-import dedupe from './_dedupe'
+import coalesceCalls from './_coalesceCalls'
 
-describe('dedupe', () => {
+describe('coalesceCalls', () => {
   it('decorates an async function', async () => {
-    const fn = dedupe(promise => promise)
+    const fn = coalesceCalls(promise => promise)
 
     const defer1 = pDefer()
     const promise1 = fn(defer1.promise)

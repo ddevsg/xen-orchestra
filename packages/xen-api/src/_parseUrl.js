@@ -2,7 +2,7 @@ const URL_RE = /^(?:(https?:)\/*)?(?:([^:]+):([^@]+)@)?([^/]+?)(?::([0-9]+))?\/?
 
 export default url => {
   const matches = URL_RE.exec(url)
-  if (!matches) {
+  if (matches === null) {
     throw new Error('invalid URL: ' + url)
   }
 

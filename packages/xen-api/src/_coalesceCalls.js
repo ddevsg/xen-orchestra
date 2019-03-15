@@ -1,5 +1,5 @@
 // decorates fn so that more than one concurrent calls will be coalesced
-function dedupe(fn) {
+export default function coalesceCalls(fn) {
   let promise
   const clean = () => {
     promise = undefined
@@ -13,11 +13,3 @@ function dedupe(fn) {
     return promise
   }
 }
-
-export default (target, key, descriptor) =>
-  key === undefined
-    ? dedupe(target)
-    : {
-        ...descriptor,
-        value: dedupe(descriptor.value),
-      }

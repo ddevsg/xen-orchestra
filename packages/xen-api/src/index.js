@@ -15,7 +15,6 @@ import {
   startsWith,
 } from 'lodash'
 import {
-  Cancel,
   cancelable,
   defer,
   fromEvents,
@@ -29,7 +28,9 @@ import {
 
 import autoTransport from './transports/auto'
 import debug from './_debug'
+import getTaskResult from './_getTaskResult'
 import isGetAllRecordsMethod from './_isGetAllRecordsMethod'
+import isOpaqueRef from './_isOpaqueRef'
 import isReadOnlyCall from './_isReadOnlyCall'
 import makeCallSetting from './_makeCallSetting'
 import parseUrl from './_parseUrl'
@@ -104,34 +105,11 @@ const {
 
 export const NULL_REF = 'OpaqueRef:NULL'
 
-const OPAQUE_REF_PREFIX = 'OpaqueRef:'
-export const isOpaqueRef = value =>
-  typeof value === 'string' && startsWith(value, OPAQUE_REF_PREFIX)
-
 // -------------------------------------------------------------------
 
 const getKey = o => o.$id
 
 // -------------------------------------------------------------------
-
-const getTaskResult = task => {
-  const { status } = task
-  if (status === 'cancelled') {
-    return Promise.reject(new Cancel('task canceled'))
-  }
-  if (status === 'failure') {
-    const error = XapiError.wrap(task.error_info)
-    error.task = task
-    return Promise.reject(error)
-  }
-  if (status === 'success') {
-    // the result might be:
-    // - empty string
-    // - an opaque reference
-    // - an XML-RPC value
-    return Promise.resolve(task.result)
-  }
-}
 
 // TODO: find a better name
 // TODO: merge into promise-toolbox?
